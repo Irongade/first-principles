@@ -10,6 +10,7 @@ import (
 
 func (tf *TextFormatter) Decode(data []byte) (types.Record, error) {
 	data = bytes.TrimSuffix(data, []byte(TEXT_SEPARATOR))
+	data = bytes.TrimSuffix(data, []byte(NEW_LINE_SEPARATOR))
 
 	parts := strings.SplitN(string(data), TEXT_SEPARATOR, 4)
 

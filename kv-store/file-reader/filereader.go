@@ -2,6 +2,7 @@ package filereader
 
 import (
 	"bufio"
+	"errors"
 	"fmt"
 	"io"
 	"kvstore/formatter"
@@ -61,6 +62,32 @@ func CreateNewFileReader(config ReaderConfig) (*FileReader, error) {
 	}, nil
 }
 
+func (r *FileReader) ReadAtOffset(location types.RecordLocation) (types.Record, error) {
+	if location.Size == 0 {
+		return types.Record{}, fmt.Errorf("Fetched data size cannot be invalid")
+	}
+
+	buffer := make([]byte, location.Size)
+
+	n, err := r.file.ReadAt(buffer, location.Offset)
+
+	if err != nil && !errors.Is(err, io.EOF) {
+		return types.Record{}, fmt.Errorf("Seeking at offset failed: %w", err)
+	}
+
+	if n != len(buffer) {
+		return types.Record{}, fmt.Errorf("Fetched data mismatch: %w", err)
+	}
+
+	record, err := r.formatter.Decode(buffer)
+
+	if err != nil {
+		return types.Record{}, fmt.Errorf("Error decoding bytes: %w", err)
+	}
+
+	return record, nil
+}
+
 func (r *FileReader) ReadAll() ([]types.Record, error) {
 	_, err := r.file.Seek(0, io.SeekStart)
 
@@ -86,6 +113,47 @@ func (r *FileReader) ReadAll() ([]types.Record, error) {
 
 	if err := scanner.Err(); err != nil {
 		return nil, fmt.Errorf("Scanning file error: %w", err)
+	}
+
+	return records, nil
+}
+
+// Specifically for tracking offsets
+func (r *FileReader) ScanAll() ([]types.ScannedRecord, error) {
+	_, err := r.file.Seek(0, io.SeekStart)
+
+	if err != nil {
+		return nil, fmt.Errorf("Seek to beginning failed: %w", err)
+	}
+
+	var offset int64
+
+	scanner := r.newScanner()
+
+	records := make([]types.ScannedRecord, 0)
+
+	for scanner.Scan() {
+		line := scanner.Bytes()
+
+		record, err := r.formatter.Decode(line)
+
+		if err != nil {
+			return nil, fmt.Errorf("Error decoding bytes: %w", err)
+		}
+
+		// adding + 1 to include new line since .Scan() removes them.
+		size := len(line) + 1
+
+		records = append(records, types.ScannedRecord{
+			Record: record,
+			RecordLocation: types.RecordLocation{
+				Offset: offset,
+				Size:   uint32(size),
+			},
+		})
+
+		// advance offset forward.
+		offset += int64(size)
 	}
 
 	return records, nil

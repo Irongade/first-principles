@@ -13,3 +13,5 @@ const (
 )
 
 const TOMBSTONE = "-1"
+
+const MaxRequestSize = 1 << 20

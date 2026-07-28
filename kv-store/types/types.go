@@ -10,3 +10,12 @@ type Record struct {
 }
 
 type SyncPolicy int
+type RecordLocation struct {
+	Offset int64
+	Size   uint32
+}
+
+type ScannedRecord struct {
+	Record
+	RecordLocation RecordLocation
+}

@@ -7,15 +7,16 @@ import (
 	"kvstore/indexing"
 )
 
-type BasicIndexer struct {
+type PositionIndexer struct {
 	IndexFormat indexing.IndexFormat
 	Reader      *filereader.FileReader
 	index       map[string]indexing.IndexEntry
 }
 
-func (bi *BasicIndexer) Populate() error {
+func (bi *PositionIndexer) Populate() error {
+
 	// load up all the logs in memory in our index, for fast gets and updates.
-	records, err := bi.Reader.ReadAll()
+	records, err := bi.Reader.ScanAll()
 
 	if err != nil {
 		return fmt.Errorf("Error populating index: %w", err)
@@ -29,7 +30,8 @@ func (bi *BasicIndexer) Populate() error {
 			bi.Delete(record.Key)
 		} else {
 			entry := indexing.IndexEntry{
-				Value: record.Value,
+				Value:          record.Value,
+				RecordLocation: record.RecordLocation,
 			}
 
 			bi.index[record.Key] = entry
@@ -40,7 +42,7 @@ func (bi *BasicIndexer) Populate() error {
 	return nil
 }
 
-func (bi *BasicIndexer) Get(K string) (indexing.IndexEntry, bool) {
+func (bi *PositionIndexer) Get(K string) (indexing.IndexEntry, bool) {
 	val, ok := bi.index[K]
 
 	if !ok {
@@ -50,13 +52,13 @@ func (bi *BasicIndexer) Get(K string) (indexing.IndexEntry, bool) {
 	return val, true
 }
 
-func (bi *BasicIndexer) Update(K string, entry indexing.IndexEntry) error {
+func (bi *PositionIndexer) Update(K string, entry indexing.IndexEntry) error {
 	bi.index[K] = entry
 
 	return nil
 }
 
-func (bi *BasicIndexer) Delete(K string) error {
+func (bi *PositionIndexer) Delete(K string) error {
 	delete(bi.index, K)
 
 	return nil

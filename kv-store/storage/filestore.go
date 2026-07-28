@@ -9,16 +9,19 @@ import (
 	"kvstore/indexing"
 	"kvstore/indexing/formats"
 	"kvstore/types"
+	"os"
+	"path"
 	"sync"
 )
 
-const FILE_PATH_PREFIX = "./data"
+const FILE_PATH_PREFIX = "./data/"
 
 type FileStore struct {
-	filename   string
-	fileWriter *filewriter.FileWriter
-	fileReader *filereader.FileReader
-	indexer    indexing.Indexer
+	filename    string
+	fileWriter  *filewriter.FileWriter
+	fileReader  *filereader.FileReader
+	indexer     indexing.Indexer
+	indexFormat indexing.IndexFormat
 
 	mu      sync.RWMutex
 	version string
@@ -27,6 +30,12 @@ type FileStore struct {
 
 func NewFileStore(filename string, version string, indexerFormat indexing.IndexFormat) (*FileStore, error) {
 	filepath := FILE_PATH_PREFIX + filename
+
+	dir := path.Dir(filepath)
+
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return nil, fmt.Errorf("create storage directory: %w", err)
+	}
 
 	fileWriterConfig := filewriter.CreateDefaultWriterConfig(filepath)
 	fileReaderConfig := filereader.CreateDefaultReaderConfig(filepath)
@@ -45,36 +54,41 @@ func NewFileStore(filename string, version string, indexerFormat indexing.IndexF
 
 	fmt.Println(newFileReader, newFileWriter)
 
-	// load up all the logs in memory in our index, for fast gets and updates.
-	records, err := newFileReader.ReadAll()
+	var indexer indexing.Indexer
+	switch indexerFormat {
+	case indexing.BasicIndex:
+		indexer = &formats.BasicIndexer{
+			IndexFormat: indexing.BasicIndex,
+			Reader:      newFileReader,
+		}
+	case indexing.PositionIndex:
+		indexer = &formats.PositionIndexer{
+			IndexFormat: indexing.PositionIndex,
+			Reader:      newFileReader,
+		}
+	default:
+		indexer = &formats.BasicIndexer{
+			IndexFormat: indexing.BasicIndex,
+			Reader:      newFileReader,
+		}
+	}
+
+	err = indexer.Populate()
 
 	if err != nil {
 		newFileWriter.Close()
 		newFileReader.Close()
-		return nil, fmt.Errorf("Error reading current log state: %w", err)
-	}
-
-	var indexer indexing.Indexer
-	switch indexerFormat {
-	default:
-		indexer = &formats.BasicIndexer{
-			IndexFormat: indexing.BasicIndex,
-		}
-	}
-
-	err = indexer.Populate(records)
-
-	if err != nil {
 		return nil, fmt.Errorf("Failure to populate indexer")
 	}
 
 	return &FileStore{
-		filename:   filename,
-		fileWriter: newFileWriter,
-		fileReader: newFileReader,
-		indexer:    indexer,
-		closed:     false,
-		version:    version,
+		filename:    filename,
+		fileWriter:  newFileWriter,
+		fileReader:  newFileReader,
+		indexer:     indexer,
+		indexFormat: indexerFormat,
+		closed:      false,
+		version:     version,
 	}, nil
 }
 
@@ -97,23 +111,41 @@ func (f *FileStore) Put(K string, V string) error {
 		Value:     V,
 	}
 
-	err := f.fileWriter.Append(record)
+	recordLocation, err := f.fileWriter.Append(record)
+
+	fmt.Printf("writing record: %+v\n", record)
 
 	if err != nil {
 		return fmt.Errorf("Error appending value to log")
 	}
 
+	fmt.Println("record appended successfully")
+
+	var value string
+
+	switch f.indexFormat {
+	case indexing.PositionIndex:
+		value = ""
+	case indexing.BasicIndex:
+		value = ""
+	default:
+		value = V
+	}
+
 	indexerEntry := indexing.IndexEntry{
-		Value: V,
+		Value:          value,
+		RecordLocation: recordLocation,
 	}
 
 	f.indexer.Update(K, indexerEntry)
+
+	fmt.Println("record updated in index successfully")
 
 	return nil
 }
 
 func (f *FileStore) Get(K string) (string, error) {
-	f.mu.RLock()
+	f.mu.Lock()
 	defer f.mu.Unlock()
 
 	if K == "" {
@@ -125,10 +157,32 @@ func (f *FileStore) Get(K string) (string, error) {
 	entry, exists := f.indexer.Get(K)
 
 	if !exists {
-		return "", fmt.Errorf("Key does not exist in the store")
+		return "", KeyNotFound
 	}
 
-	value = entry.Value
+	switch f.indexFormat {
+	case indexing.PositionIndex:
+		record, err := f.fileReader.ReadAtOffset(entry.RecordLocation)
+
+		fmt.Println("record", record.Key, record.Value)
+
+		if err != nil {
+			return "", fmt.Errorf("Error getting key: %w, offset info: %v", err, entry.RecordLocation)
+		}
+
+		// it is possible the retrieved key is empty, return delete op
+		if record.Operation == constants.DELETE_OPERATION {
+			return "", KeyNotFound
+		}
+
+		// getting value from file directly
+		value = record.Value
+
+	case indexing.BasicIndex:
+		value = entry.Value
+	default:
+		value = entry.Value
+	}
 
 	return value, nil
 }
@@ -144,7 +198,7 @@ func (f *FileStore) Delete(K string) error {
 	_, exists := f.indexer.Get(K)
 
 	if !exists {
-		return fmt.Errorf("Key to be deleted must exists")
+		return fmt.Errorf("Key to be deleted must exist")
 	}
 
 	record := types.Record{
@@ -153,7 +207,9 @@ func (f *FileStore) Delete(K string) error {
 		Key:       K,
 	}
 
-	f.fileWriter.Append(record)
+	if _, err := f.fileWriter.Append(record); err != nil {
+		return fmt.Errorf("Error appending delete entry to disk")
+	}
 
 	f.indexer.Delete(record.Key)
 

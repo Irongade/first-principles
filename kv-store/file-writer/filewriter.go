@@ -34,6 +34,7 @@ type FileWriter struct {
 	writer     *bufio.Writer
 	formatter  formatter.Formatter
 	syncPolicy types.SyncPolicy
+	offset     int64
 	closed     bool
 }
 
@@ -45,6 +46,13 @@ func CreateFileWriter(config WriterConfig) (*FileWriter, error) {
 	file, err := os.OpenFile(config.FilePath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, config.FileMode)
 	if err != nil {
 		return nil, fmt.Errorf(FileNotOpened.Error()+" :%w", err)
+	}
+
+	info, err := file.Stat()
+
+	if err != nil {
+		file.Close()
+		return nil, fmt.Errorf("Error fetching file stat: %w", err)
 	}
 
 	if config.BufferSize <= 0 {
@@ -67,32 +75,48 @@ func CreateFileWriter(config WriterConfig) (*FileWriter, error) {
 		formatter:  fmter,
 		syncPolicy: config.SyncPolicy,
 		closed:     false,
+		offset:     info.Size(),
 	}, nil
 }
 
-func (f *FileWriter) Append(record types.Record) error {
+func (f *FileWriter) Append(record types.Record) (types.RecordLocation, error) {
 	// if file writer is closed
 	if f.closed {
-		return fmt.Errorf("File writer is closed")
+		return types.RecordLocation{}, fmt.Errorf("File writer is closed")
 	}
 
 	// encode data into bytes so they can be streamed to file.
 	encoded, err := f.formatter.Encode(record)
 
 	if err != nil {
-		return fmt.Errorf("Encode error occurred : %w", err)
+		return types.RecordLocation{}, fmt.Errorf("Encode error occurred : %w", err)
+	}
+
+	location := types.RecordLocation{
+		Offset: f.offset,
+		Size:   uint32(len(encoded)),
 	}
 
 	// use the buffer to write to memory, and when the buffer size is exceeded it is flushed to
-	if _, err := f.writer.Write(encoded); err != nil {
-		return fmt.Errorf("Write record failed : %w", err)
+	n, err := f.writer.Write(encoded)
+
+	if err != nil {
+		return types.RecordLocation{}, fmt.Errorf("Write record failed : %w", err)
 	}
+
+	// perhaps we need to flush and sync every time to make sure data is accurate.
+	if n != len(encoded) {
+		return types.RecordLocation{}, fmt.Errorf("Written length not equal to encoded data: %w", err)
+	}
+
+	// make sure to advance the offset now after write succeeds
+	f.offset += int64(n)
 
 	if f.syncPolicy == constants.SyncEveryWrite {
-		return f.flushAndSync()
+		return location, f.flushAndSync()
 	}
 
-	return nil
+	return location, nil
 }
 
 func (f *FileWriter) Flush() error {
