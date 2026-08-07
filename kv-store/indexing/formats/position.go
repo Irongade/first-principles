@@ -9,7 +9,7 @@ import (
 
 type PositionIndexer struct {
 	IndexFormat indexing.IndexFormat
-	Reader      *filereader.FileReader
+	Reader      filereader.FileReader
 	index       map[string]indexing.IndexEntry
 }
 
@@ -60,6 +60,12 @@ func (bi *PositionIndexer) Update(K string, entry indexing.IndexEntry) error {
 
 func (bi *PositionIndexer) Delete(K string) error {
 	delete(bi.index, K)
+
+	return nil
+}
+
+func (bi *PositionIndexer) View() error {
+	fmt.Println(bi.index)
 
 	return nil
 }

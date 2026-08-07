@@ -2,18 +2,18 @@ package text
 
 import (
 	"kvstore/constants"
-	"kvstore/formatter"
 	"kvstore/types"
+	"kvstore/variables"
 	"strings"
 )
 
 func (tf *TextFormatter) Encode(record types.Record) ([]byte, error) {
 	if record.Version == "" {
-		return nil, formatter.EMPTY_KEY_RECORD
+		return nil, variables.EMPTY_KEY_RECORD
 	}
 
 	if record.Key == "" {
-		return nil, formatter.EMPTY_KEY_RECORD
+		return nil, variables.EMPTY_KEY_RECORD
 	}
 
 	var value string
@@ -33,7 +33,7 @@ func (tf *TextFormatter) Encode(record types.Record) ([]byte, error) {
 		escapeField(value),
 	}
 
-	appendValue := strings.Join(fields, TEXT_SEPARATOR) + "\n"
+	appendValue := strings.Join(fields, constants.TEXT_SEPARATOR) + "\n"
 
 	return []byte(appendValue), nil
 }

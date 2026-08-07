@@ -3,7 +3,7 @@ package api
 import (
 	"encoding/json"
 	"errors"
-	"kvstore/storage"
+	"kvstore/variables"
 	"log/slog"
 	"net/http"
 	"strings"
@@ -82,8 +82,8 @@ func (e *Engine) handleGet(res http.ResponseWriter, _ *http.Request, key string)
 	value, err := e.store.Get(key)
 
 	if err != nil {
-		if errors.Is(err, storage.KeyNotFound) {
-			writeError(res, http.StatusNotFound, storage.KeyNotFound.Error())
+		if errors.Is(err, variables.KeyNotFound) {
+			writeError(res, http.StatusNotFound, variables.KeyNotFound.Error())
 			return
 		}
 
@@ -139,8 +139,8 @@ func (e *Engine) handleDelete(res http.ResponseWriter, _ *http.Request, key stri
 	err := e.store.Delete(key)
 
 	if err != nil {
-		if errors.Is(err, storage.KeyNotFound) {
-			writeError(res, http.StatusNotFound, storage.KeyNotFound.Error())
+		if errors.Is(err, variables.KeyNotFound) {
+			writeError(res, http.StatusNotFound, variables.KeyNotFound.Error())
 			return
 		}
 

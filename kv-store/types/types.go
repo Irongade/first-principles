@@ -11,11 +11,15 @@ type Record struct {
 
 type SyncPolicy int
 type RecordLocation struct {
-	Offset int64
-	Size   uint32
+	SegmentId int
+	Offset    int64
+	Size      uint32
 }
-
 type ScannedRecord struct {
 	Record
 	RecordLocation RecordLocation
 }
+
+type FileFormat string
+
+type FormatterOptions int

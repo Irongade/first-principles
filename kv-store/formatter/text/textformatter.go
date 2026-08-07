@@ -1,7 +1,5 @@
 package text
 
-const TEXT_SEPARATOR = "|"
-const NEW_LINE_SEPARATOR = "\n"
-
+// empty placeholder for text formatter.
 type TextFormatter struct {
 }

@@ -9,7 +9,7 @@ import (
 
 type BasicIndexer struct {
 	IndexFormat indexing.IndexFormat
-	Reader      *filereader.FileReader
+	Reader      filereader.FileReader
 	index       map[string]indexing.IndexEntry
 }
 
@@ -58,6 +58,12 @@ func (bi *BasicIndexer) Update(K string, entry indexing.IndexEntry) error {
 
 func (bi *BasicIndexer) Delete(K string) error {
 	delete(bi.index, K)
+
+	return nil
+}
+
+func (bi *BasicIndexer) View() error {
+	fmt.Println(bi.index)
 
 	return nil
 }

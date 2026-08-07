@@ -5,10 +5,15 @@ import (
 	"fmt"
 	"kvstore/constants"
 	filereader "kvstore/file-reader"
+	segmentreader "kvstore/file-reader/segment"
+	simplereader "kvstore/file-reader/simple"
 	filewriter "kvstore/file-writer"
+	segmentwriter "kvstore/file-writer/segment"
+	simplewriter "kvstore/file-writer/simple"
 	"kvstore/indexing"
 	"kvstore/indexing/formats"
 	"kvstore/types"
+	"kvstore/variables"
 	"os"
 	"path"
 	"sync"
@@ -18,8 +23,8 @@ const FILE_PATH_PREFIX = "./data/"
 
 type FileStore struct {
 	filename    string
-	fileWriter  *filewriter.FileWriter
-	fileReader  *filereader.FileReader
+	fileWriter  filewriter.FileWriter
+	fileReader  filereader.FileReader
 	indexer     indexing.Indexer
 	indexFormat indexing.IndexFormat
 
@@ -28,7 +33,7 @@ type FileStore struct {
 	closed  bool
 }
 
-func NewFileStore(filename string, version string, indexerFormat indexing.IndexFormat) (*FileStore, error) {
+func NewFileStore(filename string, version string, fileFormat types.FileFormat, indexerFormat indexing.IndexFormat) (*FileStore, error) {
 	filepath := FILE_PATH_PREFIX + filename
 
 	dir := path.Dir(filepath)
@@ -37,22 +42,36 @@ func NewFileStore(filename string, version string, indexerFormat indexing.IndexF
 		return nil, fmt.Errorf("create storage directory: %w", err)
 	}
 
-	fileWriterConfig := filewriter.CreateDefaultWriterConfig(filepath)
-	fileReaderConfig := filereader.CreateDefaultReaderConfig(filepath)
+	var newFileWriter filewriter.FileWriter
+	var err error
 
-	newFileWriter, err := filewriter.CreateFileWriter(fileWriterConfig)
+	switch fileFormat {
+	case constants.SegmentFileFormat:
+		segmentFileWriterConfig := segmentwriter.CreateDefaultWriterConfig()
+		newFileWriter, err = segmentwriter.CreateFileWriter(segmentFileWriterConfig)
+	case constants.SimpleFileFormat:
+		simpleFileWriterConfig := simplewriter.CreateDefaultWriterConfig(filepath)
+		newFileWriter, err = simplewriter.CreateFileWriter(simpleFileWriterConfig)
+	}
 
 	if err != nil {
 		return nil, fmt.Errorf("Error creating the File Writer :%w", err)
 	}
 
-	newFileReader, err := filereader.CreateNewFileReader(fileReaderConfig)
+	var newFileReader filereader.FileReader
+
+	switch fileFormat {
+	case constants.SegmentFileFormat:
+		segmentFileReaderConfig := segmentreader.CreateDefaultReaderConfig()
+		newFileReader, err = segmentreader.CreateNewFileReader(segmentFileReaderConfig)
+	case constants.SimpleFileFormat:
+		simpleFileReaderConfig := simplereader.CreateDefaultReaderConfig(filepath)
+		newFileReader, err = simplereader.CreateNewFileReader(simpleFileReaderConfig)
+	}
 
 	if err != nil {
 		return nil, fmt.Errorf("Error creating File Reader :%w", err)
 	}
-
-	fmt.Println(newFileReader, newFileWriter)
 
 	var indexer indexing.Indexer
 	switch indexerFormat {
@@ -114,6 +133,7 @@ func (f *FileStore) Put(K string, V string) error {
 	recordLocation, err := f.fileWriter.Append(record)
 
 	fmt.Printf("writing record: %+v\n", record)
+	fmt.Printf("writing record location: %+v\n", recordLocation)
 
 	if err != nil {
 		return fmt.Errorf("Error appending value to log")
@@ -137,7 +157,11 @@ func (f *FileStore) Put(K string, V string) error {
 		RecordLocation: recordLocation,
 	}
 
+	fmt.Println("indexer entry value", indexerEntry)
+
 	f.indexer.Update(K, indexerEntry)
+
+	f.indexer.View()
 
 	fmt.Println("record updated in index successfully")
 
@@ -157,7 +181,7 @@ func (f *FileStore) Get(K string) (string, error) {
 	entry, exists := f.indexer.Get(K)
 
 	if !exists {
-		return "", KeyNotFound
+		return "", variables.KeyNotFound
 	}
 
 	switch f.indexFormat {
@@ -172,7 +196,7 @@ func (f *FileStore) Get(K string) (string, error) {
 
 		// it is possible the retrieved key is empty, return delete op
 		if record.Operation == constants.DELETE_OPERATION {
-			return "", KeyNotFound
+			return "", variables.KeyNotFound
 		}
 
 		// getting value from file directly

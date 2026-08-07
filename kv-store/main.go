@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"kvstore/api"
+	"kvstore/constants"
 	"kvstore/indexing"
 	"kvstore/storage"
 	"log/slog"
@@ -17,7 +18,7 @@ import (
 func main() {
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
 
-	store, err := storage.NewFileStore("test.txt", "V1", indexing.PositionIndex)
+	store, err := storage.NewFileStore("test.txt", "V1", constants.SegmentFileFormat, indexing.PositionIndex)
 
 	if err != nil {
 		logger.Error("Create store failed to work", "error", err)

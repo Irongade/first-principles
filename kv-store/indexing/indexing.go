@@ -21,4 +21,5 @@ type Indexer interface {
 	Update(key string, entry IndexEntry) error
 	Get(key string) (IndexEntry, bool)
 	Delete(key string) error
+	View() error
 }
