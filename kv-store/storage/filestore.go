@@ -26,14 +26,14 @@ type FileStore struct {
 	fileWriter  filewriter.FileWriter
 	fileReader  filereader.FileReader
 	indexer     indexing.Indexer
-	indexFormat indexing.IndexFormat
+	indexFormat types.IndexFormat
 
 	mu      sync.RWMutex
 	version string
 	closed  bool
 }
 
-func NewFileStore(filename string, version string, fileFormat types.FileFormat, indexerFormat indexing.IndexFormat) (*FileStore, error) {
+func NewFileStore(filename string, version string, fileFormat types.FileFormat, indexerFormat types.IndexFormat) (*FileStore, error) {
 	filepath := FILE_PATH_PREFIX + filename
 
 	dir := path.Dir(filepath)
@@ -74,20 +74,21 @@ func NewFileStore(filename string, version string, fileFormat types.FileFormat, 
 	}
 
 	var indexer indexing.Indexer
+
 	switch indexerFormat {
-	case indexing.BasicIndex:
-		indexer = &formats.BasicIndexer{
-			IndexFormat: indexing.BasicIndex,
+	case constants.ValueIndex:
+		indexer = &formats.ValueIndexer{
+			IndexFormat: constants.ValueIndex,
 			Reader:      newFileReader,
 		}
-	case indexing.PositionIndex:
+	case constants.PositionIndex:
 		indexer = &formats.PositionIndexer{
-			IndexFormat: indexing.PositionIndex,
+			IndexFormat: constants.PositionIndex,
 			Reader:      newFileReader,
 		}
 	default:
-		indexer = &formats.BasicIndexer{
-			IndexFormat: indexing.BasicIndex,
+		indexer = &formats.ValueIndexer{
+			IndexFormat: constants.ValueIndex,
 			Reader:      newFileReader,
 		}
 	}
@@ -144,10 +145,10 @@ func (f *FileStore) Put(K string, V string) error {
 	var value string
 
 	switch f.indexFormat {
-	case indexing.PositionIndex:
+	case constants.PositionIndex:
 		value = ""
-	case indexing.BasicIndex:
-		value = ""
+	case constants.ValueIndex:
+		value = V
 	default:
 		value = V
 	}
@@ -185,7 +186,7 @@ func (f *FileStore) Get(K string) (string, error) {
 	}
 
 	switch f.indexFormat {
-	case indexing.PositionIndex:
+	case constants.PositionIndex:
 		record, err := f.fileReader.ReadAtOffset(entry.RecordLocation)
 
 		fmt.Println("record", record.Key, record.Value)
@@ -202,7 +203,7 @@ func (f *FileStore) Get(K string) (string, error) {
 		// getting value from file directly
 		value = record.Value
 
-	case indexing.BasicIndex:
+	case constants.ValueIndex:
 		value = entry.Value
 	default:
 		value = entry.Value

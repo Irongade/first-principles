@@ -4,13 +4,6 @@ import (
 	"kvstore/types"
 )
 
-type IndexFormat string
-
-const (
-	BasicIndex    IndexFormat = "basic"
-	PositionIndex IndexFormat = "position"
-)
-
 type IndexEntry struct {
 	Value          string
 	RecordLocation types.RecordLocation

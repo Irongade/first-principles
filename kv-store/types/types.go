@@ -23,3 +23,5 @@ type ScannedRecord struct {
 type FileFormat string
 
 type FormatterOptions int
+
+type IndexFormat string

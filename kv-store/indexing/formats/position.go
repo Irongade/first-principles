@@ -5,10 +5,11 @@ import (
 	"kvstore/constants"
 	filereader "kvstore/file-reader"
 	"kvstore/indexing"
+	"kvstore/types"
 )
 
 type PositionIndexer struct {
-	IndexFormat indexing.IndexFormat
+	IndexFormat types.IndexFormat
 	Reader      filereader.FileReader
 	index       map[string]indexing.IndexEntry
 }

@@ -21,6 +21,11 @@ const (
 	SimpleFileFormat  types.FileFormat = "simple"
 )
 
+const (
+	ValueIndex    types.IndexFormat = "value"
+	PositionIndex types.IndexFormat = "position"
+)
+
 const TOMBSTONE = "-1"
 
 const MaxRequestSize = 1 << 20
