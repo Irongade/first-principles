@@ -19,9 +19,19 @@ import (
 	"os"
 	"path"
 	"sync"
+	"time"
 )
 
 const FILE_PATH_PREFIX = "./data/"
+
+type FileStoreConfig struct {
+	Filename           string
+	Version            string
+	FileFormat         types.FileFormat
+	IndexerFormat      types.IndexFormat
+	EnableCompaction   bool
+	CompactionInterval time.Duration
+}
 
 type FileStore struct {
 	filename    string
@@ -34,10 +44,14 @@ type FileStore struct {
 	mu      sync.RWMutex
 	version string
 	closed  bool
+
+	stopCompaction chan struct{}
+	compactionWg   sync.WaitGroup
+	stopOnce       sync.Once
 }
 
-func NewFileStore(filename string, version string, fileFormat types.FileFormat, indexerFormat types.IndexFormat) (*FileStore, error) {
-	filepath := FILE_PATH_PREFIX + filename
+func NewFileStore(config FileStoreConfig) (*FileStore, error) {
+	filepath := FILE_PATH_PREFIX + config.Filename
 
 	dir := path.Dir(filepath)
 
@@ -48,7 +62,7 @@ func NewFileStore(filename string, version string, fileFormat types.FileFormat, 
 	var newFileWriter filewriter.FileWriter
 	var err error
 
-	switch fileFormat {
+	switch config.FileFormat {
 	case constants.SegmentFileFormat:
 		segmentFileWriterConfig := segmentwriter.CreateDefaultWriterConfig()
 		newFileWriter, err = segmentwriter.CreateFileWriter(segmentFileWriterConfig)
@@ -63,7 +77,7 @@ func NewFileStore(filename string, version string, fileFormat types.FileFormat, 
 
 	var newFileReader filereader.FileReader
 
-	switch fileFormat {
+	switch config.FileFormat {
 	case constants.SegmentFileFormat:
 		segmentFileReaderConfig := segmentreader.CreateDefaultReaderConfig()
 		newFileReader, err = segmentreader.CreateNewFileReader(segmentFileReaderConfig)
@@ -78,7 +92,7 @@ func NewFileStore(filename string, version string, fileFormat types.FileFormat, 
 
 	var indexer indexing.Indexer
 
-	switch indexerFormat {
+	switch config.IndexerFormat {
 	case constants.ValueIndex:
 		indexer = &formats.ValueIndexer{
 			IndexFormat: constants.ValueIndex,
@@ -106,7 +120,7 @@ func NewFileStore(filename string, version string, fileFormat types.FileFormat, 
 
 	var compactor *compaction.Compactor
 
-	if indexerFormat == constants.PositionIndex {
+	if config.IndexerFormat == constants.PositionIndex {
 		newCompactor, err := compaction.CreateNewCompactor(newFileReader, fileutil.CreateDefaultSegmentConfig())
 		if err != nil {
 			return nil, fmt.Errorf("Error creating Compactor")
@@ -117,16 +131,24 @@ func NewFileStore(filename string, version string, fileFormat types.FileFormat, 
 		compactor = nil
 	}
 
-	return &FileStore{
-		filename:    filename,
+	store := &FileStore{
+		filename:    config.Filename,
 		fileWriter:  newFileWriter,
 		fileReader:  newFileReader,
 		indexer:     indexer,
-		indexFormat: indexerFormat,
+		indexFormat: config.IndexerFormat,
 		closed:      false,
-		version:     version,
+		version:     config.Version,
 		compactor:   compactor,
-	}, nil
+
+		stopCompaction: make(chan struct{}),
+	}
+
+	if compactor != nil && config.EnableCompaction && config.CompactionInterval > 5*time.Second {
+		store.startCompactionLoop(config.CompactionInterval)
+	}
+
+	return store, nil
 }
 
 func (f *FileStore) Put(K string, V string) error {
@@ -259,7 +281,11 @@ func (f *FileStore) Delete(K string) error {
 }
 
 func (f *FileStore) CompactSegments() error {
-	if f.closed {
+	f.mu.RLock()
+	closed := f.closed
+	f.mu.RUnlock()
+
+	if closed {
 		return fmt.Errorf("Store is already closed")
 	}
 
@@ -290,6 +316,12 @@ func (f *FileStore) CompactSegments() error {
 }
 
 func (f *FileStore) Close() error {
+
+	f.stopOnce.Do(func() {
+		close(f.stopCompaction)
+	})
+	f.compactionWg.Wait()
+
 	f.mu.Lock()
 	defer f.mu.Unlock()
 
@@ -365,4 +397,27 @@ func (f *FileStore) processCompaction(result compaction.CompactorResult) error {
 	}
 
 	return nil
+}
+
+func (f *FileStore) startCompactionLoop(interval time.Duration) {
+	f.compactionWg.Add(1)
+
+	go func() {
+		defer f.compactionWg.Done()
+
+		ticker := time.NewTicker(interval)
+		defer ticker.Stop()
+
+		for {
+			select {
+			case <-ticker.C:
+				if err := f.CompactSegments(); err != nil {
+					fmt.Println("Background run failed: %w", err)
+				}
+			case <-f.stopCompaction:
+				fmt.Println("Compaction loop has ended")
+				return
+			}
+		}
+	}()
 }

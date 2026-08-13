@@ -17,7 +17,14 @@ import (
 func main() {
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
 
-	store, err := storage.NewFileStore("test.txt", "V1", constants.SegmentFileFormat, constants.PositionIndex)
+	store, err := storage.NewFileStore(storage.FileStoreConfig{
+		Filename:           "test.txt",
+		Version:            "V1",
+		FileFormat:         constants.SegmentFileFormat,
+		IndexerFormat:      constants.PositionIndex,
+		EnableCompaction:   true,
+		CompactionInterval: 15 * time.Second,
+	})
 
 	if err != nil {
 		logger.Error("Create store failed to work", "error", err)
