@@ -1,18 +1,14 @@
 package segmentwriter
 
 import (
-	"bufio"
 	"errors"
 	"fmt"
 	"kvstore/constants"
+	fileutil "kvstore/file-util"
 	"kvstore/formatter"
 	"kvstore/formatter/text"
 	"kvstore/types"
-	"kvstore/variables"
 	"os"
-	"path/filepath"
-	"strconv"
-	"strings"
 )
 
 type WriterConfig struct {
@@ -25,16 +21,8 @@ type WriterConfig struct {
 	MaxSegmentSize      int64
 }
 
-type Segment struct {
-	id     int
-	file   *os.File
-	writer *bufio.Writer
-	offset int64
-	closed bool
-}
-
 type FileWriter struct {
-	current   *Segment
+	current   *fileutil.Segment
 	threshold int64
 	formatter formatter.Formatter
 	config    WriterConfig
@@ -65,13 +53,19 @@ func CreateFileWriter(config WriterConfig) (*FileWriter, error) {
 		return nil, fmt.Errorf("create storage directory: %w", err)
 	}
 
-	index, err := findLastSegment(config)
+	index, err := fileutil.FindLastSegment(fileutil.SegmentConfig{
+		FileDirectory: config.FileDirectory,
+	})
 
 	if err != nil {
 		return nil, fmt.Errorf("Error reading last segment id: %w", err)
 	}
 
-	segment, err := openSegment(config, index)
+	segment, err := fileutil.OpenFileSegment(fileutil.SegmentConfig{
+		FileDirectory:  config.FileDirectory,
+		BufferSize:     config.BufferSize,
+		FilePermission: config.FilePermission,
+	}, index)
 
 	if err != nil {
 		return nil, fmt.Errorf("Error opening segment file with id %d: %w", index, err)
@@ -95,7 +89,7 @@ func CreateFileWriter(config WriterConfig) (*FileWriter, error) {
 }
 
 func (f *FileWriter) Append(record types.Record) (types.RecordLocation, error) {
-	if f.current.closed {
+	if f.current.Closed {
 		return types.RecordLocation{}, fmt.Errorf("Segment File writer is closed")
 	}
 
@@ -106,22 +100,22 @@ func (f *FileWriter) Append(record types.Record) (types.RecordLocation, error) {
 	encodedSize := len(encoded)
 
 	// if the threshold is surpassed roll the segments.
-	if f.current.offset > 0 && f.current.offset+int64(encodedSize) > f.threshold {
+	if f.current.Offset > 0 && f.current.Offset+int64(encodedSize) > f.threshold {
 		if err := f.roll(); err != nil {
 			return types.RecordLocation{}, err
 		}
 	}
 
 	location := types.RecordLocation{
-		SegmentId: f.current.id,
-		Offset:    f.current.offset,
+		SegmentId: f.current.Id,
+		Offset:    f.current.Offset,
 		Size:      uint32(encodedSize),
 	}
 
-	fmt.Println("location value", location)
+	// fmt.Println("location value", location)
 	// n, err := f.current.file.Write(encoded)
 	// this could be done, but for now, keeping it simple
-	n, err := f.current.writer.Write(encoded)
+	n, err := f.current.Writer.Write(encoded)
 
 	if err != nil {
 		return types.RecordLocation{}, fmt.Errorf("Error appending record: %w", err)
@@ -132,7 +126,7 @@ func (f *FileWriter) Append(record types.Record) (types.RecordLocation, error) {
 	}
 
 	// advance offset
-	f.current.offset += int64(n)
+	f.current.Offset += int64(n)
 
 	if f.config.SyncPolicy == constants.SyncEveryWrite {
 		return location, f.Flush()
@@ -143,33 +137,41 @@ func (f *FileWriter) Append(record types.Record) (types.RecordLocation, error) {
 }
 
 func (f *FileWriter) Flush() error {
-	if f.current.closed {
+	if f.current.Closed {
 		return nil
 	}
 
-	if err := f.current.writer.Flush(); err != nil {
+	if err := f.current.Writer.Flush(); err != nil {
 		return err
 	}
 
-	return f.current.file.Sync()
+	return f.current.File.Sync()
 }
 
 func (f *FileWriter) Close() error {
-	if f.current.closed {
+	if f.current.Closed {
 		return nil
 	}
 
 	flushErr := f.Flush()
-	closeErr := f.current.file.Close()
+	closeErr := f.current.File.Close()
 
 	// close the current segment.
-	f.current.closed = true
+	f.current.Closed = true
 
 	return errors.Join(flushErr, closeErr)
 }
 
+func (f *FileWriter) GetActiveSegmentId() (int, error) {
+	if f.current.Closed {
+		return 0, fmt.Errorf("File writer has been closed, cannot retrieve active segment id")
+	}
+
+	return f.current.Id, nil
+}
+
 func (f *FileWriter) roll() error {
-	if f.current.closed {
+	if f.current.Closed {
 		return fmt.Errorf("Cannot roll segment as file writer is closed")
 	}
 
@@ -179,16 +181,20 @@ func (f *FileWriter) roll() error {
 	}
 
 	// after flushing close the file so we dont have files stuck in memory
-	if err := f.current.file.Close(); err != nil {
+	if err := f.current.File.Close(); err != nil {
 		return fmt.Errorf("Error closing file during rolling segment update: %w", err)
 	}
 
 	// close off the file so other ops can fail.
-	f.current.closed = true
+	f.current.Closed = true
 
-	prevIndex := f.current.id
+	prevIndex := f.current.Id
 
-	newSegment, err := openSegment(f.config, prevIndex+1)
+	newSegment, err := fileutil.OpenFileSegment(fileutil.SegmentConfig{
+		FileDirectory:  f.config.FileDirectory,
+		BufferSize:     f.config.BufferSize,
+		FilePermission: f.config.FilePermission,
+	}, prevIndex+1)
 
 	if err != nil {
 		return fmt.Errorf("Error opening new segment file: %w", err)
@@ -198,83 +204,4 @@ func (f *FileWriter) roll() error {
 	f.current = newSegment
 
 	return nil
-}
-
-func findLastSegment(config WriterConfig) (int, error) {
-
-	if config.FilePermission == 0 {
-		return 0, fmt.Errorf("File Permissions cannot be invalid")
-	}
-
-	entries, err := os.ReadDir(config.FileDirectory)
-
-	if err != nil {
-		return 0, fmt.Errorf("Error opening Segment directory")
-	}
-
-	last := 1
-
-	for _, entry := range entries {
-		if entry.IsDir() {
-			continue
-		}
-
-		name := entry.Name()
-
-		if !strings.HasPrefix(name, constants.SEGMENT_PREFIX) || !strings.HasSuffix(name, constants.SEGMENT_EXTENSION) {
-			continue
-		}
-
-		trimmedName := strings.TrimSuffix(strings.TrimPrefix(name, constants.SEGMENT_PREFIX), constants.SEGMENT_EXTENSION)
-
-		id, err := strconv.Atoi(trimmedName)
-
-		if err != nil {
-			continue
-		}
-
-		if id > last {
-			last = id
-		}
-
-	}
-
-	return last, nil
-}
-
-func openSegment(config WriterConfig, index int) (*Segment, error) {
-
-	filepath := filepath.Join(config.FileDirectory, getSegmentName(index))
-
-	file, err := os.OpenFile(filepath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, os.FileMode(config.FilePermission))
-
-	if err != nil {
-		return nil, fmt.Errorf(variables.FileNotOpened.Error()+" :%w", err)
-	}
-
-	info, err := file.Stat()
-
-	if err != nil {
-		file.Close()
-		return nil, fmt.Errorf("File Stats could not be fetched")
-	}
-
-	if config.BufferSize <= 0 {
-		file.Close()
-		return nil, variables.BufferSizeInvalid
-	}
-
-	fmt.Println("Open segment", index, file.Name())
-
-	return &Segment{
-		id:     index,
-		file:   file,
-		writer: bufio.NewWriterSize(file, config.BufferSize),
-		offset: info.Size(),
-		closed: false,
-	}, nil
-}
-
-func getSegmentName(id int) string {
-	return fmt.Sprintf("%s%0*d%s", constants.SEGMENT_PREFIX, constants.SEGMENT_NAME_WIDTH, id, constants.SEGMENT_EXTENSION)
 }

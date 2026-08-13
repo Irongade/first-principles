@@ -142,6 +142,10 @@ func (f *FileWriter) Close() error {
 	return errors.Join(flushErr, syncErr, closeErr)
 }
 
+func (f *FileWriter) GetActiveSegmentId() (int, error) {
+	return 0, fmt.Errorf("Simple file writer does not use active segments")
+}
+
 func (f *FileWriter) flushAndSync() error {
 	if err := f.writer.Flush(); err != nil {
 		return fmt.Errorf("Buffer Flush error occurred : %w", err)

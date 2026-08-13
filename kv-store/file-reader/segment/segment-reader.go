@@ -33,6 +33,7 @@ type ReaderConfig struct {
 	FilePermission      int
 	DirectoryPermission int
 	MaxSegmentSize      int64
+	StaleSegmentMaxSize int
 }
 
 func CreateDefaultReaderConfig() ReaderConfig {
@@ -44,6 +45,7 @@ func CreateDefaultReaderConfig() ReaderConfig {
 		FilePermission:      constants.FILE_PERMISSION,
 		DirectoryPermission: constants.DIRECTORY_PERMISSION,
 		MaxRecordSize:       4 * 1024 * 1024,
+		StaleSegmentMaxSize: 1,
 	}
 }
 
@@ -143,7 +145,7 @@ func (r *FileReader) ScanAll() ([]types.ScannedRecord, error) {
 	})
 
 	if err != nil {
-		return nil, fmt.Errorf("Error reading all records due to segment file paths")
+		return nil, fmt.Errorf("Error reading all file paths due to segment file paths")
 	}
 
 	records := make([]types.ScannedRecord, 0)
@@ -159,6 +161,31 @@ func (r *FileReader) ScanAll() ([]types.ScannedRecord, error) {
 	}
 
 	return records, nil
+}
+
+func (r *FileReader) ScanStaleSegments() ([]types.ScannedRecord, []string, error) {
+	filepaths, err := fileutil.GetAllStaleSegmentFilePaths(fileutil.SegmentConfig{
+		FileDirectory:           r.config.FileDirectory,
+		StaleSegmentFileMaxSize: r.config.StaleSegmentMaxSize,
+	})
+
+	if err != nil {
+		return nil, nil, fmt.Errorf("Error reading all stale filepaths due to stale segment file paths")
+	}
+
+	records := make([]types.ScannedRecord, 0)
+
+	for _, filepath := range filepaths {
+		fileRecords, err := r.scanFile(filepath)
+
+		if err != nil {
+			return nil, nil, fmt.Errorf("Error reading this file: %s, err details here: %w", filepath, err)
+		}
+
+		records = append(records, fileRecords...)
+	}
+
+	return records, filepaths, nil
 }
 
 func (r *FileReader) readFile(filepath string) ([]types.Record, error) {

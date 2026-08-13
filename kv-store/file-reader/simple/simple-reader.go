@@ -161,6 +161,10 @@ func (r *FileReader) ScanAll() ([]types.ScannedRecord, error) {
 	return records, nil
 }
 
+func (r *FileReader) ScanStaleSegments() ([]types.ScannedRecord, []string, error) {
+	return nil, nil, nil
+}
+
 func (r *FileReader) Close() error {
 	return r.file.Close()
 }

@@ -23,6 +23,9 @@ type Store interface {
 
 	// closes the DB
 	Close() error
+
+	// manual compaction of segments
+	CompactSegments() error
 }
 
 type RequestPayload struct {
@@ -50,6 +53,7 @@ func (e *Engine) Handler() http.Handler {
 
 	mux.HandleFunc("/health", e.handleHealth)
 	mux.HandleFunc("/kv/", e.handleMethods)
+	mux.HandleFunc("/compaction", e.handleCompaction)
 
 	return e.loggingMiddleware(mux)
 }
@@ -161,6 +165,26 @@ func (e *Engine) handleHealth(res http.ResponseWriter, _ *http.Request) {
 	writeJson(res, http.StatusOK, map[string]string{
 		"status": "ok",
 	})
+}
+
+func (e *Engine) handleCompaction(res http.ResponseWriter, req *http.Request) {
+	switch req.Method {
+	case http.MethodPost:
+		err := e.store.CompactSegments()
+
+		if err != nil {
+			writeError(res, http.StatusBadRequest, err.Error())
+			return
+		}
+
+		writeJson(res, http.StatusOK, map[string]string{
+			"status": "ok",
+		})
+
+	default:
+		writeError(res, http.StatusBadRequest, "Incorrect HTTP verb")
+	}
+
 }
 
 func writeJson(res http.ResponseWriter, status int, value any) {

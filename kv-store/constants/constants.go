@@ -41,3 +41,5 @@ const DIRECTORY_PERMISSION = 0o755
 
 const TEXT_SEPARATOR = "|"
 const NEW_LINE_SEPARATOR = "\n"
+
+const LETTERS = "abcdefghijklmnopqrstuvwxyz"

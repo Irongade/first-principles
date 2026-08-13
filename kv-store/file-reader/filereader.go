@@ -9,4 +9,5 @@ type FileReader interface {
 	ReadAll() ([]types.Record, error)
 	ScanAll() ([]types.ScannedRecord, error)
 	Close() error
+	ScanStaleSegments() ([]types.ScannedRecord, []string, error)
 }
