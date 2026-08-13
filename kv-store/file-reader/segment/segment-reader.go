@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"kvstore/config"
 	"kvstore/constants"
 	fileutil "kvstore/file-util"
 	"kvstore/formatter"
@@ -22,7 +23,7 @@ type Segment struct {
 
 type FileReader struct {
 	formatter formatter.Formatter
-	config    ReaderConfig
+	config    config.Config
 }
 
 type ReaderConfig struct {
@@ -49,7 +50,7 @@ func CreateDefaultReaderConfig() ReaderConfig {
 	}
 }
 
-func CreateNewFileReader(config ReaderConfig) (*FileReader, error) {
+func CreateNewFileReader(config config.Config) (*FileReader, error) {
 
 	if config.MaxRecordSize <= 0 {
 		return nil, fmt.Errorf("Max record size cannot be less than or equal to 0")
@@ -79,7 +80,7 @@ func (r *FileReader) ReadAtOffset(location types.RecordLocation) (types.Record, 
 		return types.Record{}, fmt.Errorf("Fetched data size cannot be invalid")
 	}
 
-	filepath := filepath.Join(r.config.FileDirectory, fileutil.GetSegmentName(location.SegmentId))
+	filepath := filepath.Join(r.config.DataDir, fileutil.GetSegmentName(location.SegmentId))
 
 	segmentFile, err := os.OpenFile(filepath, os.O_RDONLY, 0)
 
@@ -116,7 +117,7 @@ func (r *FileReader) ReadAtOffset(location types.RecordLocation) (types.Record, 
 
 func (r *FileReader) ReadAll() ([]types.Record, error) {
 	filepaths, err := fileutil.GetAllSegmentFilePaths(fileutil.SegmentConfig{
-		FileDirectory: r.config.FileDirectory,
+		FileDirectory: r.config.DataDir,
 	})
 
 	if err != nil {
@@ -141,7 +142,7 @@ func (r *FileReader) ReadAll() ([]types.Record, error) {
 // Specifically for tracking offsets
 func (r *FileReader) ScanAll() ([]types.ScannedRecord, error) {
 	filepaths, err := fileutil.GetAllSegmentFilePaths(fileutil.SegmentConfig{
-		FileDirectory: r.config.FileDirectory,
+		FileDirectory: r.config.DataDir,
 	})
 
 	if err != nil {
@@ -165,8 +166,8 @@ func (r *FileReader) ScanAll() ([]types.ScannedRecord, error) {
 
 func (r *FileReader) ScanStaleSegments() ([]types.ScannedRecord, []string, error) {
 	filepaths, err := fileutil.GetAllStaleSegmentFilePaths(fileutil.SegmentConfig{
-		FileDirectory:           r.config.FileDirectory,
-		StaleSegmentFileMaxSize: r.config.StaleSegmentMaxSize,
+		FileDirectory:           r.config.DataDir,
+		StaleSegmentFileMaxSize: r.config.StaleSegmentThreshold,
 	})
 
 	if err != nil {

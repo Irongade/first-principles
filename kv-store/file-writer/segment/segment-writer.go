@@ -3,6 +3,8 @@ package segmentwriter
 import (
 	"errors"
 	"fmt"
+	"io/fs"
+	"kvstore/config"
 	"kvstore/constants"
 	fileutil "kvstore/file-util"
 	"kvstore/formatter"
@@ -16,8 +18,8 @@ type WriterConfig struct {
 	BufferSize          int
 	SyncPolicy          types.SyncPolicy
 	Formatter           types.FormatterOptions
-	FilePermission      int
-	DirectoryPermission int
+	FilePermission      fs.FileMode
+	DirectoryPermission fs.FileMode
 	MaxSegmentSize      int64
 }
 
@@ -25,7 +27,7 @@ type FileWriter struct {
 	current   *fileutil.Segment
 	threshold int64
 	formatter formatter.Formatter
-	config    WriterConfig
+	config    config.Config
 }
 
 func CreateDefaultWriterConfig() WriterConfig {
@@ -40,7 +42,7 @@ func CreateDefaultWriterConfig() WriterConfig {
 	}
 }
 
-func CreateFileWriter(config WriterConfig) (*FileWriter, error) {
+func CreateFileWriter(config config.Config) (*FileWriter, error) {
 	if config.DirectoryPermission == 0 {
 		return nil, fmt.Errorf("Directory Permissions cannot be invalid")
 	}
@@ -49,12 +51,12 @@ func CreateFileWriter(config WriterConfig) (*FileWriter, error) {
 		return nil, fmt.Errorf("File Permissions cannot be invalid")
 	}
 
-	if err := os.MkdirAll(config.FileDirectory, os.FileMode(config.DirectoryPermission)); err != nil {
+	if err := os.MkdirAll(config.DataDir, os.FileMode(config.DirectoryPermission)); err != nil {
 		return nil, fmt.Errorf("create storage directory: %w", err)
 	}
 
 	index, err := fileutil.FindLastSegment(fileutil.SegmentConfig{
-		FileDirectory: config.FileDirectory,
+		FileDirectory: config.DataDir,
 	})
 
 	if err != nil {
@@ -62,7 +64,7 @@ func CreateFileWriter(config WriterConfig) (*FileWriter, error) {
 	}
 
 	segment, err := fileutil.OpenFileSegment(fileutil.SegmentConfig{
-		FileDirectory:  config.FileDirectory,
+		FileDirectory:  config.DataDir,
 		BufferSize:     config.BufferSize,
 		FilePermission: config.FilePermission,
 	}, index)
@@ -84,7 +86,7 @@ func CreateFileWriter(config WriterConfig) (*FileWriter, error) {
 		current:   segment,
 		formatter: fmter,
 		config:    config,
-		threshold: config.MaxSegmentSize,
+		threshold: int64(config.MaxSegmentSize),
 	}, nil
 }
 
@@ -191,7 +193,7 @@ func (f *FileWriter) roll() error {
 	prevIndex := f.current.Id
 
 	newSegment, err := fileutil.OpenFileSegment(fileutil.SegmentConfig{
-		FileDirectory:  f.config.FileDirectory,
+		FileDirectory:  f.config.DataDir,
 		BufferSize:     f.config.BufferSize,
 		FilePermission: f.config.FilePermission,
 	}, prevIndex+1)

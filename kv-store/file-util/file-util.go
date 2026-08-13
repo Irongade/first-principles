@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"crypto/rand"
 	"fmt"
+	"io/fs"
 	"kvstore/constants"
 	"kvstore/types"
 	"kvstore/variables"
@@ -26,7 +27,7 @@ type Segment struct {
 type SegmentConfig struct {
 	FileDirectory           string
 	BufferSize              int
-	FilePermission          int
+	FilePermission          fs.FileMode
 	MaxSegmentSize          int
 	StaleSegmentFileMaxSize int
 	FormatOptions           types.FormatterOptions

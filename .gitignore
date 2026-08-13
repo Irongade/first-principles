@@ -5,3 +5,5 @@ settings.json
 /kv-store/data/**.txt
 
 **/data/*
+
+**/.env

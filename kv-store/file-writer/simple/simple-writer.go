@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"errors"
 	"fmt"
+	"kvstore/config"
 	"kvstore/constants"
 	"kvstore/formatter"
 	"kvstore/formatter/text"
@@ -39,12 +40,12 @@ type FileWriter struct {
 	closed     bool
 }
 
-func CreateFileWriter(config WriterConfig) (*FileWriter, error) {
-	if config.FilePath == "" {
+func CreateFileWriter(config config.Config) (*FileWriter, error) {
+	if config.FileName == "" {
 		return nil, variables.FileNotFound
 	}
 
-	file, err := os.OpenFile(config.FilePath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, config.FileMode)
+	file, err := os.OpenFile(config.FileName, os.O_CREATE|os.O_WRONLY|os.O_APPEND, config.FilePermission)
 	if err != nil {
 		return nil, fmt.Errorf(variables.FileNotOpened.Error()+" :%w", err)
 	}

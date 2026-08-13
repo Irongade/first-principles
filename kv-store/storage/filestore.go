@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"kvstore/compaction"
+	"kvstore/config"
 	"kvstore/constants"
 	filereader "kvstore/file-reader"
 	segmentreader "kvstore/file-reader/segment"
@@ -24,15 +25,6 @@ import (
 
 const FILE_PATH_PREFIX = "./data/"
 
-type FileStoreConfig struct {
-	Filename           string
-	Version            string
-	FileFormat         types.FileFormat
-	IndexerFormat      types.IndexFormat
-	EnableCompaction   bool
-	CompactionInterval time.Duration
-}
-
 type FileStore struct {
 	filename    string
 	fileWriter  filewriter.FileWriter
@@ -50,8 +42,8 @@ type FileStore struct {
 	stopOnce       sync.Once
 }
 
-func NewFileStore(config FileStoreConfig) (*FileStore, error) {
-	filepath := FILE_PATH_PREFIX + config.Filename
+func NewFileStore(config config.Config) (*FileStore, error) {
+	filepath := FILE_PATH_PREFIX + config.FileName
 
 	dir := path.Dir(filepath)
 
@@ -62,13 +54,11 @@ func NewFileStore(config FileStoreConfig) (*FileStore, error) {
 	var newFileWriter filewriter.FileWriter
 	var err error
 
-	switch config.FileFormat {
+	switch config.StorageFormat {
 	case constants.SegmentFileFormat:
-		segmentFileWriterConfig := segmentwriter.CreateDefaultWriterConfig()
-		newFileWriter, err = segmentwriter.CreateFileWriter(segmentFileWriterConfig)
+		newFileWriter, err = segmentwriter.CreateFileWriter(config)
 	case constants.SimpleFileFormat:
-		simpleFileWriterConfig := simplewriter.CreateDefaultWriterConfig(filepath)
-		newFileWriter, err = simplewriter.CreateFileWriter(simpleFileWriterConfig)
+		newFileWriter, err = simplewriter.CreateFileWriter(config)
 	}
 
 	if err != nil {
@@ -77,13 +67,12 @@ func NewFileStore(config FileStoreConfig) (*FileStore, error) {
 
 	var newFileReader filereader.FileReader
 
-	switch config.FileFormat {
+	switch config.StorageFormat {
 	case constants.SegmentFileFormat:
-		segmentFileReaderConfig := segmentreader.CreateDefaultReaderConfig()
-		newFileReader, err = segmentreader.CreateNewFileReader(segmentFileReaderConfig)
+
+		newFileReader, err = segmentreader.CreateNewFileReader(config)
 	case constants.SimpleFileFormat:
-		simpleFileReaderConfig := simplereader.CreateDefaultReaderConfig(filepath)
-		newFileReader, err = simplereader.CreateNewFileReader(simpleFileReaderConfig)
+		newFileReader, err = simplereader.CreateNewFileReader(config)
 	}
 
 	if err != nil {
@@ -92,7 +81,7 @@ func NewFileStore(config FileStoreConfig) (*FileStore, error) {
 
 	var indexer indexing.Indexer
 
-	switch config.IndexerFormat {
+	switch config.IndexFormat {
 	case constants.ValueIndex:
 		indexer = &formats.ValueIndexer{
 			IndexFormat: constants.ValueIndex,
@@ -120,7 +109,7 @@ func NewFileStore(config FileStoreConfig) (*FileStore, error) {
 
 	var compactor *compaction.Compactor
 
-	if config.IndexerFormat == constants.PositionIndex {
+	if config.IndexFormat == constants.PositionIndex {
 		newCompactor, err := compaction.CreateNewCompactor(newFileReader, fileutil.CreateDefaultSegmentConfig())
 		if err != nil {
 			return nil, fmt.Errorf("Error creating Compactor")
@@ -132,11 +121,11 @@ func NewFileStore(config FileStoreConfig) (*FileStore, error) {
 	}
 
 	store := &FileStore{
-		filename:    config.Filename,
+		filename:    config.FileName,
 		fileWriter:  newFileWriter,
 		fileReader:  newFileReader,
 		indexer:     indexer,
-		indexFormat: config.IndexerFormat,
+		indexFormat: config.IndexFormat,
 		closed:      false,
 		version:     config.Version,
 		compactor:   compactor,

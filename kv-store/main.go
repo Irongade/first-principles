@@ -4,7 +4,7 @@ import (
 	"context"
 	"errors"
 	"kvstore/api"
-	"kvstore/constants"
+	"kvstore/config"
 	"kvstore/storage"
 	"log/slog"
 	"net/http"
@@ -12,19 +12,24 @@ import (
 	"os/signal"
 	"syscall"
 	"time"
+
+	"github.com/joho/godotenv"
 )
 
 func main() {
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
 
-	store, err := storage.NewFileStore(storage.FileStoreConfig{
-		Filename:           "test.txt",
-		Version:            "V1",
-		FileFormat:         constants.SegmentFileFormat,
-		IndexerFormat:      constants.PositionIndex,
-		EnableCompaction:   true,
-		CompactionInterval: 15 * time.Second,
-	})
+	err := godotenv.Load()
+
+	if err != nil {
+		logger.Warn("Error loading .env file, proceeding with defaults")
+	}
+
+	cfg := config.Load(logger)
+	cfg.LogSummary(logger)
+	cfg.Validate(logger)
+
+	store, err := storage.NewFileStore(cfg)
 
 	if err != nil {
 		logger.Error("Create store failed to work", "error", err)

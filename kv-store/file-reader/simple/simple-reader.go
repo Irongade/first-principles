@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"kvstore/config"
 	"kvstore/constants"
 	filereader "kvstore/file-reader"
 	"kvstore/formatter"
@@ -33,12 +34,12 @@ func CreateDefaultReaderConfig(filepath string) ReaderConfig {
 	}
 }
 
-func CreateNewFileReader(config ReaderConfig) (*FileReader, error) {
-	if config.FilePath == "" {
+func CreateNewFileReader(config config.Config) (*FileReader, error) {
+	if config.FileName == "" {
 		return nil, filereader.FileNotFound
 	}
 
-	file, err := os.OpenFile(config.FilePath, os.O_RDONLY, 0)
+	file, err := os.OpenFile(config.FileName, os.O_RDONLY, 0)
 
 	if err != nil {
 		return nil, err
