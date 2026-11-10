@@ -11,6 +11,7 @@ import (
 	"kvstore/types"
 	"kvstore/variables"
 	"os"
+	"path/filepath"
 )
 
 type WriterConfig struct {
@@ -45,7 +46,13 @@ func CreateFileWriter(config config.Config) (*FileWriter, error) {
 		return nil, variables.FileNotFound
 	}
 
-	file, err := os.OpenFile(config.FileName, os.O_CREATE|os.O_WRONLY|os.O_APPEND, config.FilePermission)
+	if err := os.MkdirAll(config.DataDir, config.DirectoryPermission); err != nil {
+		return nil, fmt.Errorf("create storage directory: %w", err)
+	}
+
+	filePath := filepath.Join(config.DataDir, config.FileName)
+
+	file, err := os.OpenFile(filePath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, config.FilePermission)
 	if err != nil {
 		return nil, fmt.Errorf(variables.FileNotOpened.Error()+" :%w", err)
 	}

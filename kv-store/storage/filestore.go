@@ -17,13 +17,11 @@ import (
 	"kvstore/indexing/formats"
 	"kvstore/types"
 	"kvstore/variables"
-	"os"
-	"path"
 	"sync"
 	"time"
 )
 
-const FILE_PATH_PREFIX = "./data/"
+// const FILE_PATH_PREFIX = "./data/"
 
 type FileStore struct {
 	filename    string
@@ -40,17 +38,11 @@ type FileStore struct {
 	stopCompaction chan struct{}
 	compactionWg   sync.WaitGroup
 	stopOnce       sync.Once
+
+	config config.Config
 }
 
 func NewFileStore(config config.Config) (*FileStore, error) {
-	filepath := FILE_PATH_PREFIX + config.FileName
-
-	dir := path.Dir(filepath)
-
-	if err := os.MkdirAll(dir, 0o755); err != nil {
-		return nil, fmt.Errorf("create storage directory: %w", err)
-	}
-
 	var newFileWriter filewriter.FileWriter
 	var err error
 
@@ -110,7 +102,7 @@ func NewFileStore(config config.Config) (*FileStore, error) {
 	var compactor *compaction.Compactor
 
 	if config.IndexFormat == constants.PositionIndex {
-		newCompactor, err := compaction.CreateNewCompactor(newFileReader, fileutil.CreateDefaultSegmentConfig())
+		newCompactor, err := compaction.CreateNewCompactor(newFileReader, fileutil.SegmentConfigFrom(config))
 		if err != nil {
 			return nil, fmt.Errorf("Error creating Compactor")
 		}
@@ -131,6 +123,7 @@ func NewFileStore(config config.Config) (*FileStore, error) {
 		compactor:   compactor,
 
 		stopCompaction: make(chan struct{}),
+		config:         config,
 	}
 
 	if compactor != nil && config.EnableCompaction && config.CompactionInterval > 5*time.Second {
@@ -331,7 +324,7 @@ func (f *FileStore) processCompaction(result compaction.CompactorResult) error {
 	defer f.mu.Unlock()
 
 	// rename old files
-	stalePathMapping, err := fileutil.RenameNewSegmentFiles(fileutil.CreateDefaultSegmentConfig(), result.CompactedSegmentNames, result.LastSegmentId)
+	stalePathMapping, err := fileutil.RenameNewSegmentFiles(fileutil.SegmentConfigFrom(f.config), result.CompactedSegmentNames, result.LastSegmentId)
 
 	if err != nil {
 		return fmt.Errorf("Error renaming file segments: %w", err)

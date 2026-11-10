@@ -126,3 +126,7 @@ func (r *FileReader) RebuildIndex() (map[uint64]types.Location, uint64, uint64, 
 
 	return entries, firstIndex, lastIndex, nil
 }
+
+func (r *FileReader) Close() error {
+	return r.file.Close()
+}

@@ -12,6 +12,7 @@ import (
 	"kvstore/formatter/text"
 	"kvstore/types"
 	"os"
+	"path/filepath"
 )
 
 type FileReader struct {
@@ -39,7 +40,9 @@ func CreateNewFileReader(config config.Config) (*FileReader, error) {
 		return nil, filereader.FileNotFound
 	}
 
-	file, err := os.OpenFile(config.FileName, os.O_RDONLY, 0)
+	filePath := filepath.Join(config.DataDir, config.FileName)
+
+	file, err := os.OpenFile(filePath, os.O_RDONLY, 0)
 
 	if err != nil {
 		return nil, err

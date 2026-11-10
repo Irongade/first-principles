@@ -1,6 +1,7 @@
 package replication
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"statemachine/encoding"
@@ -144,5 +145,8 @@ func (l *Log) Close() error {
 
 	l.closed = true
 
-	return nil
+	writerErr := l.writer.Close()
+	readerErr := l.reader.Close()
+
+	return errors.Join(writerErr, readerErr)
 }

@@ -4,7 +4,7 @@ import "statemachine/types"
 
 type ReplicatedLog interface {
 	Append(data []byte) (types.LogEntry, error)
-	Get(index uint64) (types.LogEntry, error)
+	Read(index uint64) (types.LogEntry, error)
 
 	FirstIndex() uint64
 	LastIndex() uint64
@@ -14,6 +14,8 @@ type ReplicatedLog interface {
 
 type Reader interface {
 	Read(location types.Location) ([]byte, error)
+	RebuildIndex() (map[uint64]types.Location, uint64, uint64, error)
+	Close() error
 }
 
 type Writer interface {

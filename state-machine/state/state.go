@@ -3,7 +3,7 @@ package state
 import (
 	"fmt"
 	"log/slog"
-	"os"
+	"statemachine/command"
 	"statemachine/constants"
 	"statemachine/types"
 	"sync"
@@ -12,23 +12,17 @@ import (
 	"kvstore/storage"
 )
 
-type Command struct {
-	Operation types.Operation
-	Key       string
-	Value     string
-}
-
 type StateMachine struct {
 	store types.Store
 	mu    sync.Mutex
 }
 
-func CreateNewStateMachine() (*StateMachine, error) {
-	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
+func CreateNewStateMachine(cfg config.Config, logger *slog.Logger) (*StateMachine, error) {
+	// logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
 
-	cfg := config.Load(logger)
-	cfg.LogSummary(logger)
-	cfg.Validate(logger)
+	// cfg := config.Load(logger)
+	// cfg.LogSummary(logger)
+	// cfg.Validate(logger)
 
 	store, err := storage.NewFileStore(cfg)
 
@@ -57,9 +51,15 @@ func (sm *StateMachine) Close() error {
 	return sm.store.Close()
 }
 
-func (sm *StateMachine) Apply(cmd Command) error {
+func (sm *StateMachine) Apply(data []byte) error {
 	sm.mu.Lock()
 	defer sm.mu.Unlock()
+
+	cmd, err := command.DecodeCommand(data)
+
+	if err != nil {
+		return err
+	}
 
 	switch cmd.Operation {
 	case constants.PUT_OPERATION:

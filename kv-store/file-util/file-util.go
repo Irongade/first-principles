@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"fmt"
 	"io/fs"
+	"kvstore/config"
 	"kvstore/constants"
 	"kvstore/types"
 	"kvstore/variables"
@@ -41,6 +42,17 @@ func CreateDefaultSegmentConfig() SegmentConfig {
 		MaxSegmentSize:          2 * 1024,
 		FilePermission:          constants.FILE_PERMISSION,
 		StaleSegmentFileMaxSize: 1,
+	}
+}
+
+func SegmentConfigFrom(cfg config.Config) SegmentConfig {
+	return SegmentConfig{
+		FileDirectory:           cfg.DataDir,
+		BufferSize:              cfg.BufferSize,
+		FilePermission:          cfg.FilePermission,
+		MaxSegmentSize:          cfg.MaxSegmentSize,
+		StaleSegmentFileMaxSize: cfg.StaleSegmentThreshold,
+		FormatOptions:           cfg.Formatter,
 	}
 }
 
