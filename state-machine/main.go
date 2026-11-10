@@ -9,10 +9,13 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"sort"
 	"statemachine/api"
 	"statemachine/constants"
 	"statemachine/node"
+	"statemachine/role"
 	"statemachine/state"
+	httptransport "statemachine/transport/http-transport"
 	"statemachine/util"
 	"syscall"
 	"time"
@@ -25,18 +28,57 @@ func main() {
 	addr := envOr("NODE_ADDR", ":8081")
 	driver := envOr("STATE_MACHINE_DRIVER", "kv")
 
+	nodeID := envOr("NODE_ID", "1")
+	leaderID := envOr("NODE_LEADER", "1")
+	nodePeers := envOr("NODE_PEERS", "1=http://localhost:8081")
+
+	peers, err := util.ParsePeers(nodePeers, nodeID)
+
+	if err != nil {
+		logger.Error("Error parsing peers: %w", err)
+		os.Exit(1)
+	}
+
+	client, err := httptransport.CreateNewHttpTransport(peers, 2*time.Second)
+
+	if err != nil {
+		logger.Error("Error creating http transport for this node. Node ID: %s, error: %w", nodeID, err)
+		os.Exit(1)
+	}
+
+	peerIDs := make([]string, len(peers))
+
+	for id := range peers {
+		peerIDs = append(peerIDs, id)
+	}
+
+	sort.Strings(peerIDs)
+
 	sm, err := buildStateMachine(driver, root, logger)
 	if err != nil {
 		logger.Error("build state machine", "error", err)
 		os.Exit(1)
 	}
 
-	n, err := node.CreateNode(root, sm, logger)
+	r := role.Follower
+
+	if nodeID == leaderID {
+		r = role.Leader
+	}
+
+	n, err := node.CreateNode(node.Config{
+		ID:    nodeID,
+		Role:  r,
+		Root:  root,
+		Peers: peerIDs,
+	}, sm, client, logger)
 	if err != nil {
 		sm.Close()
 		logger.Error("create node", "error", err)
 		os.Exit(1)
 	}
+
+	// API stuff.
 
 	engine := api.NewEngine(n, sm, logger)
 

@@ -30,7 +30,7 @@ running_count() {
 }
 
 start() {
-  local n="$1" i port
+  local n="$1" i port peers=""
   if [ "$(running_count)" != "0" ]; then
     echo "nodes already running; run 'stop' first" >&2
     exit 1
@@ -39,7 +39,12 @@ start() {
   (cd "$MODULE_DIR" && go build -o "$BIN" .)
 
   for i in $(seq 1 "$n"); do
+    peers="${peers:+$peers,}$i=http://localhost:$(port_for "$i")"
+  done
+
+  for i in $(seq 1 "$n"); do
     port="$(port_for "$i")"
+    NODE_ID="$i" NODE_LEADER="${LEADER_ID:-1}" NODE_PEERS="$peers" \
     NODE_DATA_DIR="$DATA_ROOT/node-$i" NODE_ADDR=":$port" \
       nohup "$BIN" > "$RUN_DIR/node-$i.log" 2>&1 &
     echo $! > "$(pidfile "$i")"
@@ -54,8 +59,9 @@ start() {
       exit 1
     fi
   done
-  echo "all $n nodes healthy"
+  echo "all $n nodes healthy, leader is node-${LEADER_ID:-1}"
 }
+
 
 stop() {
   local f pid
